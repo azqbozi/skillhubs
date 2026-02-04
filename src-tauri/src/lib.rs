@@ -3,21 +3,12 @@
     windows_subsystem = "windows"
 )]
 
-mod commands;
-mod models;
+pub mod commands;
+pub mod models;
+
+use commands::greet;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
-fn main() {
-    tauri::Builder::default()
-        .plugin(tauri_sql::Builder::new().add_migrations(
-            "sqlite:skills.db",
-            std::include_str!("../migrations/1_create_tables.sql").to_string(),
-        ))
-        .invoke_handler(tauri::generate_handler![greet])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
 }
