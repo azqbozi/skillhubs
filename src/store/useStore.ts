@@ -29,7 +29,7 @@ interface SkillStore {
   resolveConflict: (conflictId: string) => Promise<void>;
 }
 
-export const useStore = create<SkillStore>((set, get) => ({
+export const useStore = create<SkillStore>((set, _get) => ({
   availableSkills: [],
   setAvailableSkills: (skills) => set({ availableSkills: skills }),
 
