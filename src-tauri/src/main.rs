@@ -3,6 +3,8 @@
     windows_subsystem = "windows"
 )]
 
+use crate::commands::greet;
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_sql::Builder::new().add_migrations(

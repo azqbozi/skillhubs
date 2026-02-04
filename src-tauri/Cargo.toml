@@ -5,6 +5,10 @@ description = "A skill management application"
 authors = ["skillhubs"]
 edition = "2021"
 
+[lib]
+path = "src/lib.rs"
+name = "skillhub"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
