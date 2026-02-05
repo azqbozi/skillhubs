@@ -23,20 +23,23 @@ export function MySkills() {
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
       <div>
-        <h1 className="text-2xl font-bold">我的 Skills</h1>
-        <p className="text-muted-foreground">管理已安装的 AI 助手 Skills</p>
+        <h1 className="font-display text-2xl font-bold tracking-tight">我的 Skills</h1>
+        <p className="mt-1 text-sm text-muted-foreground">管理已安装的 AI 助手 Skills</p>
       </div>
 
       {items.length === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed py-12">
-          <Package className="h-12 w-12 text-muted-foreground" />
+        <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-border/60 bg-card/30 py-16">
+          <Package className="h-14 w-14 text-muted-foreground/60" />
           <p className="mt-4 text-muted-foreground">暂无已安装的 Skills</p>
-          <p className="mt-1 text-sm text-muted-foreground">前往「发现」页面安装 Skills</p>
+          <p className="mt-1 text-sm text-muted-foreground/80">前往「发现」页面安装 Skills</p>
         </div>
       ) : (
         <div className="space-y-3">
           {items.map(({ meta, skill }) => (
-            <div key={meta.id} className="rounded-lg border p-4">
+            <div
+              key={meta.id}
+              className="rounded-lg border border-border/60 bg-card/50 p-4 backdrop-blur-sm transition-all duration-200 hover:border-primary/20"
+            >
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">

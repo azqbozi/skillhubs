@@ -93,8 +93,73 @@ fn remove_dir_if_exists(path: &Path) {
     let _ = fs::remove_dir_all(path);
 }
 
+/// 校验 skill_id 安全（防注入）
+fn validate_skill_id(id: &str) -> Result<(), String> {
+    let id = id.trim();
+    if id.is_empty() {
+        return Err("skill id 不能为空".into());
+    }
+    if id.chars().any(|c| c.is_whitespace() || c == '/' || c == '\\' || c == '"' || c == '\'') {
+        return Err("skill id 含非法字符".into());
+    }
+    Ok(())
+}
+
+/// 通过 npx skills add 安装（优先方案，适配 skills.sh 官方 CLI）
+fn run_npx_skills_add(repo: &str, skill_id: &str) -> Result<(), String> {
+    let repo_url = if repo.starts_with("http://") || repo.starts_with("https://") {
+        repo.to_string()
+    } else {
+        format!("https://github.com/{}", repo.trim().trim_end_matches(".git"))
+    };
+
+    let out = Command::new("npx")
+        .args([
+            "--yes",
+            "skills",
+            "add",
+            &repo_url,
+            "--skill",
+            skill_id,
+            "-g",
+            "-y",
+        ])
+        .env("DISABLE_TELEMETRY", "1")
+        .output()
+        .map_err(|e| format!("执行 npx 失败（请确保已安装 Node.js）: {e}"))?;
+
+    if out.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    Err(format!(
+        "npx skills add 失败:\n{}{}",
+        if !stdout.is_empty() {
+            format!("stdout:\n{stdout}\n")
+        } else {
+            String::new()
+        },
+        if !stderr.is_empty() {
+            format!("stderr:\n{stderr}")
+        } else {
+            "无详细信息".to_string()
+        }
+    ))
+}
+
+/// 检查 npx 是否可用
+fn npx_available() -> bool {
+    Command::new("npx")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
 /// 实际安装逻辑（供 commands/mod.rs 的 tauri::command 包装调用）
 pub async fn install_skill_impl(payload: InstallSkillPayload) -> Result<String, String> {
+    validate_skill_id(&payload.id)?;
     let url = normalize_repo_url(&payload.repo)?;
     let base_dir = default_skills_dir()?;
     ensure_dir(&base_dir)?;
@@ -104,7 +169,27 @@ pub async fn install_skill_impl(payload: InstallSkillPayload) -> Result<String, 
         return Err(format!("已存在同名目录，疑似已安装: {}", target_dir.display()));
     }
 
-    // 采用临时目录 clone，然后把 sub_path（或整个 repo）移动到目标目录
+    let skill_id = payload.sub_path.as_deref().unwrap_or(&payload.id).trim();
+    if skill_id.is_empty() {
+        return Err("无法确定 skill 名称".into());
+    }
+    validate_skill_id(skill_id)?;
+
+    // 优先使用 npx skills add（适配 skills.sh 官方 CLI，路径映射更准确）
+    if npx_available() {
+        match run_npx_skills_add(&payload.repo, skill_id) {
+            Ok(()) => {
+                return Ok(format!("安装完成: {}", target_dir.display()));
+            }
+            Err(e) => {
+                // 静默回退到 git 方案，不把 npx 错误抛给用户（除非用户更希望看到）
+                // 这里我们回退，让 git 再试一次
+                let _ = e;
+            }
+        }
+    }
+
+    // 回退：采用临时目录 clone，然后把 sub_path（或整个 repo）移动到目标目录
     let tmp = unique_temp_dir("skillhub_clone");
     remove_dir_if_exists(&tmp);
     let tmp_path = tmp.to_string_lossy().to_string();

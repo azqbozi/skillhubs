@@ -102,21 +102,22 @@ export function DialogContent({ children, className }: DialogContentProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* 遮罩 */}
       <div
-        className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+        className="fixed inset-0 bg-black/60 backdrop-blur-md"
         onClick={() => onOpenChange(false)}
       />
-      {/* 弹窗内容 */}
+      {/* 弹窗内容 - 科技感面板 */}
       <div
         className={cn(
-          'relative z-50 w-full max-w-lg max-h-[85vh] overflow-auto rounded-lg border bg-background p-6 shadow-lg',
-          'animate-in fade-in-0 zoom-in-95',
+          'relative z-50 w-full max-w-lg max-h-[85vh] overflow-auto rounded-lg border border-border/60 bg-card/95 p-6 shadow-xl backdrop-blur-xl',
+          'shadow-[0_0_0_1px_hsl(var(--border)/0.5),0_25px_50px_-12px_rgba(0,0,0,0.5)]',
+          'animate-in fade-in-0 zoom-in-95 duration-200',
           className
         )}
       >
         {/* 关闭按钮 */}
         <button
           type="button"
-          className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          className="absolute right-4 top-4 rounded-md p-1 opacity-60 ring-offset-background transition-all hover:opacity-100 hover:bg-accent/50 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
           onClick={() => onOpenChange(false)}
         >
           <X className="h-4 w-4" />

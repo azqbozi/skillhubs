@@ -77,7 +77,7 @@ export function SkillDetailModal({
           <DialogTitle className="flex items-center gap-2">
             {skill.name}
             {isInstalled && (
-              <span className="rounded bg-green-100 px-2 py-0.5 text-xs text-green-700 dark:bg-green-900 dark:text-green-300">
+              <span className="rounded border border-primary/40 bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
                 已安装
               </span>
             )}
@@ -109,7 +109,7 @@ export function SkillDetailModal({
 
           {!loading && !error && (
             <div className="space-y-4">
-              <div className="rounded-md bg-muted p-4">
+              <div className="rounded-md border border-border/40 bg-secondary/30 p-4">
                 <p className="text-sm leading-relaxed">
                   {description || '暂无描述'}
                 </p>

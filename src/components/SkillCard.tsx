@@ -15,19 +15,22 @@ import { Download, ExternalLink } from 'lucide-react';
 interface SkillCardProps {
   skill: RegistrySkill;
   isInstalled?: boolean;
+  /** 用于入场动画错峰延迟 */
+  index?: number;
 }
 
 /**
  * Skill 展示卡片组件
  * 点击卡片打开详情弹窗
  */
-export function SkillCard({ skill, isInstalled = false }: SkillCardProps) {
+export function SkillCard({ skill, isInstalled = false, index = 0 }: SkillCardProps) {
   const [detailOpen, setDetailOpen] = useState(false);
 
   return (
     <>
       <Card
-        className="flex cursor-pointer flex-col overflow-hidden transition-shadow hover:shadow-md"
+        className="flex cursor-pointer flex-col overflow-hidden opacity-0 transition-all duration-300 hover:shadow-[0_0_0_1px_hsl(var(--primary)/0.15),0_8px_24px_-8px_rgba(0,0,0,0.4)] animate-fade-up"
+        style={{ animationDelay: `${Math.min(index * 40, 400)}ms`, animationFillMode: 'forwards' }}
         onClick={() => setDetailOpen(true)}
       >
         <CardHeader className="pb-2">

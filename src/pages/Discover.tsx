@@ -52,8 +52,8 @@ export function Discover() {
     <div className="flex flex-1 flex-col gap-6 p-6">
       {/* 标题 */}
       <div>
-        <h1 className="text-2xl font-bold">发现 Skills</h1>
-        <p className="text-muted-foreground">
+        <h1 className="font-display text-2xl font-bold tracking-tight">发现 Skills</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
           浏览并安装 AI 助手 Skills（数据来自 skills.sh）
         </p>
       </div>
@@ -72,21 +72,20 @@ export function Discover() {
         </div>
 
         {/* 排序 Tab */}
-        <div className="flex items-center gap-4 border-b">
+        <div className="flex items-center gap-1 border-b border-border/60 pb-px">
           {sortOptions.map((option) => (
             <button
               key={option.value}
               onClick={() => setSort(option.value)}
-              className={`relative px-1 py-2 text-sm font-medium transition-colors ${
+              className={`relative px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
                 sort === option.value
                   ? 'text-primary'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               {option.label}
-              {/* 选中下划线 */}
               {sort === option.value && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-primary shadow-[0_0_8px_hsl(var(--primary)/0.6)]" />
               )}
             </button>
           ))}
@@ -106,9 +105,9 @@ export function Discover() {
 
       {/* 加载状态 */}
       {loading && (
-        <div className="flex flex-1 items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          <span className="ml-2 text-muted-foreground">加载中...</span>
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 py-16">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <span className="text-sm text-muted-foreground">加载中...</span>
         </div>
       )}
 
@@ -127,11 +126,12 @@ export function Discover() {
       {!loading && !error && (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredSkills.map((skill) => (
+            {filteredSkills.map((skill, index) => (
               <SkillCard
                 key={skill.id}
                 skill={skill}
                 isInstalled={installedSkillIds.includes(skill.id)}
+                index={index}
               />
             ))}
           </div>
