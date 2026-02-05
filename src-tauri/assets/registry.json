@@ -5,7 +5,7 @@
       "id": "react-performance-expert",
       "name": "React Performance Expert",
       "repo": "vercel-labs/agent-skills",
-      "subPath": "react-best-practices",
+      "subPath": "skills/react-best-practices",
       "description": "React性能优化专家，帮助优化React应用的性能和用户体验",
       "category": "前端开发",
       "tags": ["react", "nextjs", "performance"],

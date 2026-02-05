@@ -1,74 +1,46 @@
 import { create } from 'zustand';
-import { Skill, InstalledSkill, Conflict } from '../types/skill';
+import { invoke } from '@tauri-apps/api/core';
 
-interface SkillStore {
-  // Available skills from registry
-  availableSkills: Skill[];
-  setAvailableSkills: (skills: Skill[]) => void;
+export type Platform = 'claude' | 'cursor';
 
-  // Installed skills
-  installedSkills: InstalledSkill[];
-  addInstalledSkill: (skill: InstalledSkill) => void;
-  removeInstalledSkill: (skillId: string) => void;
-  updateInstalledSkill: (skillId: string, updates: Partial<InstalledSkill>) => void;
-
-  // Conflicts
-  conflicts: Conflict[];
-  setConflicts: (conflicts: Conflict[]) => void;
-
-  // UI State
-  selectedCategory: string | null;
-  setSelectedCategory: (category: string | null) => void;
-  searchQuery: string;
-  setSearchQuery: (query: string) => void;
-
-  // Actions
-  installSkill: (skill: Skill) => Promise<void>;
-  uninstallSkill: (skillId: string) => Promise<void>;
-  checkForUpdates: () => Promise<void>;
-  resolveConflict: (conflictId: string) => Promise<void>;
+export interface InstalledSkillMeta {
+  id: string;
+  name?: string | null;
+  description?: string | null;
+  tags: string[];
+  install_path: string;
+  skill_md_path?: string | null;
 }
 
-export const useStore = create<SkillStore>((set, _get) => ({
-  availableSkills: [],
-  setAvailableSkills: (skills) => set({ availableSkills: skills }),
+interface AppStore {
+  /** 当前平台（决定扫描哪个 skills 目录） */
+  platform: Platform;
+  setPlatform: (platform: Platform) => void;
+
+  /** 本地已安装 skills（目录 + 解析后的元数据） */
+  installedSkills: InstalledSkillMeta[];
+  /** 便捷：已安装 id 集合 */
+  installedSkillIds: string[];
+  refreshInstalledSkills: () => Promise<void>;
+}
+
+/**
+ * 全局状态（MVP）
+ */
+export const useStore = create<AppStore>((set, get) => ({
+  platform: 'claude',
+  setPlatform: (platform) => set({ platform }),
 
   installedSkills: [],
-  addInstalledSkill: (skill) =>
-    set((state) => ({ installedSkills: [...state.installedSkills, skill] })),
-  removeInstalledSkill: (skillId) =>
-    set((state) => ({
-      installedSkills: state.installedSkills.filter((s) => s.id !== skillId),
-    })),
-  updateInstalledSkill: (skillId, updates) =>
-    set((state) => ({
-      installedSkills: state.installedSkills.map((s) =>
-        s.id === skillId ? { ...s, ...updates } : s
-      ),
-    })),
-
-  conflicts: [],
-  setConflicts: (conflicts) => set({ conflicts }),
-
-  selectedCategory: null,
-  setSelectedCategory: (category) => set({ selectedCategory: category }),
-
-  searchQuery: '',
-  setSearchQuery: (query) => set({ searchQuery: query }),
-
-  installSkill: async (skill) => {
-    console.log('Installing skill:', skill.name);
-  },
-
-  uninstallSkill: async (skillId) => {
-    console.log('Uninstalling skill:', skillId);
-  },
-
-  checkForUpdates: async () => {
-    console.log('Checking for updates');
-  },
-
-  resolveConflict: async (conflictId) => {
-    console.log('Resolving conflict:', conflictId);
+  installedSkillIds: [],
+  refreshInstalledSkills: async () => {
+    if (!('__TAURI__' in window)) {
+      // 浏览器模式无法调用后端，返回空
+      set({ installedSkills: [], installedSkillIds: [] });
+      return;
+    }
+    const platform = get().platform;
+    const skills = await invoke<InstalledSkillMeta[]>('get_installed_skills', { platform });
+    set({ installedSkills: skills, installedSkillIds: skills.map((s) => s.id) });
   },
 }));
