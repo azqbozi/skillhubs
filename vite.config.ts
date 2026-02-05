@@ -10,4 +10,15 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  server: {
+    // 代理 skills.sh API 解决 CORS 问题
+    proxy: {
+      '/api/skills-sh': {
+        target: 'https://skills.sh',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/api\/skills-sh/, ''),
+        secure: true,
+      },
+    },
+  },
 })

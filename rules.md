@@ -175,14 +175,19 @@ fn detect_conflicts(platform: String) -&gt; Vec&lt;Conflict&gt;;
 7. **冲突检测**: 解析 SKILL.md frontmatter，检测重复 triggers
 8. **设置页**: 配置不同平台的技能目录路径
 
-## 9. 注意事项
+## 9. 计划文档规范
+
+- **计划文件位置**：所有实现计划、设计文档统一保存在 `docs/plans/` 目录下
+- **命名约定**：`YYYY-MM-DD-描述.md` 或 `功能名-plan.md`（如 `skills-sh-integration-plan.md`）
+
+## 10. 注意事项
 
 - **Git 依赖**: 检查系统是否安装 Git，未安装提示用户
 - **错误处理**: 网络失败、权限不足、磁盘空间满等情况的 UI 提示
 - **路径处理**: Windows 使用反斜杠，macOS/Linux 使用正斜杠（使用 PathBuf 处理）
 - **安全性**: 执行 Git 命令前验证 repo URL 格式，防止命令注入
 
-## 10. 交付物要求
+## 11. 交付物要求
 
 完成后应包含：
 - 可运行的 Tauri 应用（npm run tauri dev 能启动）
