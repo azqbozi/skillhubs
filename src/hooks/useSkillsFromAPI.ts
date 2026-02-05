@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { RegistrySkill } from '@/data/registry';
+import { getSnapshot, setSnapshot } from '@/lib/skillsCache';
 
 /**
  * 排序类型
@@ -19,8 +20,8 @@ interface UseSkillsFromAPIResult {
   loading: boolean;
   /** 错误信息 */
   error: string | null;
-  /** 重新请求 */
-  refetch: () => void;
+  /** 重新请求，forceRefresh=true 时跳过缓存强制拉取 */
+  refetch: (forceRefresh?: boolean) => void;
   /** 当前排序 */
   sort: SortType;
   /** 设置排序 */
@@ -159,7 +160,7 @@ function parseSkillsWithRegex(html: string): RegistrySkill[] {
 }
 
 /**
- * 从 skills.sh 主页抓取并解析技能列表
+ * 从 skills.sh 主页抓取并解析技能列表（混合模式：缓存 + 后台静默刷新）
  * @param initialSort - 初始排序类型
  * @param limit - 最大数量（用于截断结果）
  */
@@ -174,57 +175,79 @@ export function useSkillsFromAPI(
   const [hasMore, setHasMore] = useState(false);
 
   /**
-   * 抓取 skills.sh 页面并解析
+   * 实际请求逻辑
+   * @param silent - 后台静默刷新：不设置 loading，失败时不改 error/skills
    */
-  const fetchSkills = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      // 根据 sort 选择不同的页面
-      // 全部: / , 趋势: /trending , 热门: /hot
-      const path = sort ? `/${sort}` : '/';
-      
-      // 通过 Vite 代理请求 skills.sh 页面
-      const url = `/api/skills-sh${path}`;
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        throw new Error(`请求失败: ${response.status}`);
+  const fetchSkillsCore = useCallback(
+    async (silent: boolean) => {
+      if (!silent) {
+        setLoading(true);
+        setError(null);
       }
 
-      const html = await response.text();
-      
-      // 解析 HTML
-      let parsedSkills: RegistrySkill[];
-      
-      // 优先使用 DOMParser（浏览器环境）
-      if (typeof DOMParser !== 'undefined') {
-        parsedSkills = parseSkillsFromHtml(html);
-      } else {
-        // 退回到正则解析
-        parsedSkills = parseSkillsWithRegex(html);
-      }
-      
-      // 如果 DOM 解析失败，尝试正则
-      if (parsedSkills.length === 0) {
-        parsedSkills = parseSkillsWithRegex(html);
-      }
-      
-      // 应用 limit
-      const limitedSkills = parsedSkills.slice(0, limit);
-      setSkills(limitedSkills);
-      setHasMore(parsedSkills.length > limit);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : '获取技能列表失败';
-      setError(message);
-      setSkills([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [sort, limit]);
+      try {
+        const path = sort ? `/${sort}` : '/';
+        const url = `/api/skills-sh${path}`;
+        const response = await fetch(url);
 
-  // 初始加载 & sort 变化时重新请求
+        if (!response.ok) {
+          throw new Error(`请求失败: ${response.status}`);
+        }
+
+        const html = await response.text();
+        let parsedSkills: RegistrySkill[];
+
+        if (typeof DOMParser !== 'undefined') {
+          parsedSkills = parseSkillsFromHtml(html);
+        } else {
+          parsedSkills = parseSkillsWithRegex(html);
+        }
+        if (parsedSkills.length === 0) {
+          parsedSkills = parseSkillsWithRegex(html);
+        }
+
+        const limitedSkills = parsedSkills.slice(0, limit);
+        setSkills(limitedSkills);
+        setHasMore(parsedSkills.length > limit);
+        setSnapshot(sort, limitedSkills, parsedSkills.length > limit);
+      } catch (err) {
+        if (!silent) {
+          const message =
+            err instanceof Error ? err.message : '获取技能列表失败';
+          setError(message);
+          setSkills([]);
+        }
+      } finally {
+        if (!silent) {
+          setLoading(false);
+        }
+      }
+    },
+    [sort, limit]
+  );
+
+  /**
+   * 抓取技能列表：有缓存且未强制刷新时秒开 + 后台静默刷新
+   * @param forceRefresh - true 时跳过缓存强制拉取
+   */
+  const fetchSkills = useCallback(
+    async (forceRefresh = false) => {
+      if (!forceRefresh) {
+        const cached = getSnapshot(sort);
+        if (cached) {
+          setSkills(cached.skills);
+          setHasMore(cached.hasMore);
+          setLoading(false);
+          setError(null);
+          fetchSkillsCore(true);
+          return;
+        }
+      }
+      await fetchSkillsCore(false);
+    },
+    [sort, fetchSkillsCore]
+  );
+
   useEffect(() => {
     fetchSkills();
   }, [fetchSkills]);

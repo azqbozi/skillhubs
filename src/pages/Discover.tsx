@@ -91,11 +91,11 @@ export function Discover() {
             </button>
           ))}
 
-          {/* 刷新按钮 */}
+          {/* 刷新按钮：强制拉取最新，跳过缓存 */}
           <Button
             variant="ghost"
             size="sm"
-            onClick={refetch}
+            onClick={() => refetch(true)}
             disabled={loading}
             className="ml-auto"
           >
@@ -117,7 +117,7 @@ export function Discover() {
         <div className="flex flex-1 flex-col items-center justify-center gap-4 py-12">
           <AlertCircle className="h-12 w-12 text-destructive" />
           <p className="text-destructive">{error}</p>
-          <Button variant="outline" onClick={refetch}>
+          <Button variant="outline" onClick={() => refetch(true)}>
             重试
           </Button>
         </div>
