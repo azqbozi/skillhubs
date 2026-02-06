@@ -44,7 +44,7 @@ pub fn get_detected_platforms() -> Result<Vec<String>, String> {
     Ok(detected)
 }
 
-/// 获取全局 skills 目录
+/// 获取全局 skills 目录（主路径，用于安装等）
 pub(crate) fn skills_dir_for(platform: &str) -> Result<PathBuf, String> {
     match platform {
         "claude" => Ok(home_dir()?.join(".claude").join("skills")),
@@ -126,7 +126,7 @@ pub fn get_installed_skill_ids_anywhere() -> Result<Vec<String>, String> {
     Ok(ids)
 }
 
-/// 获取本地已安装 skill 目录名列表（扫描各平台 skills 目录）
+/// 获取本地已安装 skill 目录名列表（扫描各平台 skills 目录；支持符号链接）
 #[tauri::command]
 pub fn get_installed_skill_ids(platform: String) -> Result<Vec<String>, String> {
     let dir = skills_dir_for(platform.trim())?;
@@ -137,7 +137,7 @@ pub fn get_installed_skill_ids(platform: String) -> Result<Vec<String>, String> 
     let rd = fs::read_dir(&dir).map_err(|e| format!("读取目录失败 {}: {e}", dir.display()))?;
     let mut ids: Vec<String> = rd
         .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .filter(|e| e.path().is_dir()) // 使用 path.is_dir() 以支持符号链接
         .filter_map(|e| e.file_name().to_str().map(|s| s.to_string()))
         .collect();
     ids.sort();
@@ -259,7 +259,7 @@ fn parse_fallback(md: &str) -> (Option<String>, Option<String>) {
     (name, desc)
 }
 
-/// 获取本地已安装技能元数据（扫描目录 + 解析 SKILL.md）
+/// 获取本地已安装技能元数据（扫描目录 + 解析 SKILL.md；支持符号链接）
 #[tauri::command]
 pub fn get_installed_skills(platform: String) -> Result<Vec<InstalledSkillMeta>, String> {
     let dir = skills_dir_for(platform.trim())?;
@@ -271,42 +271,42 @@ pub fn get_installed_skills(platform: String) -> Result<Vec<InstalledSkillMeta>,
     let mut out: Vec<InstalledSkillMeta> = vec![];
 
     for ent in rd.flatten() {
-        let ft = ent.file_type().ok();
-        if ft.map(|t| t.is_dir()).unwrap_or(false) {
-            let id = ent.file_name().to_string_lossy().to_string();
-            let install_path = ent.path();
-            let skill_md = find_skill_md(&install_path, 3);
-            let mut name: Option<String> = None;
-            let mut description: Option<String> = None;
-            let mut tags: Vec<String> = vec![];
+        let install_path = ent.path();
+        if !install_path.is_dir() {
+            continue; // 使用 path.is_dir() 以支持符号链接
+        }
+        let id = ent.file_name().to_string_lossy().to_string();
+        let skill_md = find_skill_md(&install_path, 3);
+        let mut name: Option<String> = None;
+        let mut description: Option<String> = None;
+        let mut tags: Vec<String> = vec![];
 
-            if let Some(md_path) = &skill_md {
-                if let Ok(content) = fs::read_to_string(md_path) {
-                    let (n1, d1, t1) = parse_frontmatter(&content);
-                    name = n1;
-                    description = d1;
-                    tags = t1;
-                    if name.is_none() || description.is_none() {
-                        let (n2, d2) = parse_fallback(&content);
-                        if name.is_none() {
-                            name = n2;
-                        }
-                        if description.is_none() {
-                            description = d2;
-                        }
+        if let Some(md_path) = &skill_md {
+            if let Ok(content) = fs::read_to_string(md_path) {
+                let (n1, d1, t1) = parse_frontmatter(&content);
+                name = n1;
+                description = d1;
+                tags = t1;
+                if name.is_none() || description.is_none() {
+                    let (n2, d2) = parse_fallback(&content);
+                    if name.is_none() {
+                        name = n2;
+                    }
+                    if description.is_none() {
+                        description = d2;
                     }
                 }
             }
-
-            out.push(InstalledSkillMeta {
-                id,
-                name,
-                description,
-                tags,
-                install_path: install_path.to_string_lossy().to_string(),
-                skill_md_path: skill_md.map(|p| p.to_string_lossy().to_string()),
-            });
         }
+
+        out.push(InstalledSkillMeta {
+            id,
+            name,
+            description,
+            tags,
+            install_path: install_path.to_string_lossy().to_string(),
+            skill_md_path: skill_md.map(|p| p.to_string_lossy().to_string()),
+        });
     }
 
     out.sort_by(|a, b| a.id.cmp(&b.id));
