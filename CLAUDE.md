@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SkillHub is a cross-platform desktop application for managing AI assistant Skills (Claude Code, Cursor, etc.). It's a Tauri v2 desktop app with Rust backend and React 18 + TypeScript frontend.
+SkillHub is a cross-platform desktop application for managing AI assistant Skills (Claude Code, Cursor, Antigravity, Gemini CLI). It's a Tauri v2 desktop app with Rust backend and React 18 + TypeScript frontend.
 
 ## Build Commands
 
@@ -21,11 +21,12 @@ npm run preview            # Preview production build
 
 ## Tech Stack
 
-- **Backend**: Rust + Tauri v2 + SQLite (tauri-sql)
+- **Backend**: Rust + Tauri v2 + tauri-plugin-sql (SQLite)
 - **Frontend**: React 18 + TypeScript + Vite 5
 - **Styling**: Tailwind CSS v4 + shadcn/ui patterns
 - **State**: Zustand
 - **Icons**: Lucide React
+- **Notifications**: sonner
 
 ## Architecture
 
@@ -34,24 +35,26 @@ npm run preview            # Preview production build
 ```
 src/
 ├── components/     # UI components (SkillCard, InstallButton, etc.)
-│   └── ui/        # shadcn/ui base components (Button, Card, Badge)
+│   └── ui/        # shadcn/ui base components (Button, Card, Badge, etc.)
 ├── pages/         # Route pages (Discover, MySkills, Settings)
-├── hooks/         # Custom hooks (useSkills, useInstall)
-├── lib/           # Utilities (db.ts, git.ts, utils.ts)
+├── hooks/         # Custom hooks (useSkills, useInstall, useSkillsFromAPI)
+├── lib/           # Utilities (db.ts, git.ts, utils.ts, skillsCache.ts, skillDetail.ts)
 ├── store/         # Zustand store (useStore.ts)
-└── types/         # TypeScript interfaces
+└── types/         # TypeScript interfaces (skill.ts)
 ```
 
 ### Backend Structure (`src-tauri/src/`)
 
 ```
 src-tauri/src/
-├── main.rs         # Tauri entry point with SQL plugin
-├── lib.rs          # Module exports (commands, models)
+├── lib.rs         # Tauri entry point with SQL plugin registration
 ├── commands/      # Tauri IPC commands
-│   └── mod.rs     # Greet command (template)
+│   ├── mod.rs    # Command exports (install_skill, get_installed_skills, etc.)
+│   ├── git.rs    # Git operations (install_skill_impl with npx/git fallback)
+│   ├── fs.rs     # File system operations (get_installed_skills, SKILL.md parsing)
+│   └── db.rs     # Database operations
 ├── models/        # Rust data models
-└── migrations/     # SQLite schema
+└── migrations/    # SQLite schema (1_create_tables.sql)
 ```
 
 ### Data Flow
@@ -60,70 +63,38 @@ src-tauri/src/
 Frontend (React) → Zustand Store → invoke() → Rust Backend → SQLite/Git
 ```
 
-## Key Tauri Commands (Rust)
+## Key Tauri Commands
 
 All file system and git operations must go through Tauri commands for security:
 
-- `install_skill(repo, sub_path, target_dir)` - Sparse or full clone
-- `get_installed_skills(platform)` - List installed skills
-- `check_update(repo, local_path)` - Compare commit hashes
-- `update_skill(local_path)` - Git pull
-- `uninstall_skill(skill_id, platform)` - Remove skill
-- `detect_conflicts(platform)` - Parse SKILL.md for duplicate triggers
+| Command | Parameters | Description |
+|---------|------------|-------------|
+| `install_skill` | `{id, repo, sub_path?}` | Install skill via npx skills add (preferred) or git sparse checkout (fallback) |
+| `get_installed_skills` | `{platform}` | List installed skills with SKILL.md metadata parsing |
+| `get_installed_skill_ids` | `{platform}` | Get installed skill IDs only |
+
+### InstallSkillPayload (Rust)
+
+```rust
+struct InstallSkillPayload {
+    id: String,
+    repo: String,
+    sub_path: Option<String>,
+}
+```
 
 ## Data Structures
 
 ### TypeScript Interfaces (`src/types/skill.ts`)
 
 ```typescript
-interface Skill {
+interface InstalledSkillMeta {
   id: string;
-  name: string;
-  repo: string;
-  subPath?: string;
-  description: string;
-  category: string;
+  name?: string | null;
+  description?: string | null;
   tags: string[];
-  platforms: ('claude' | 'cursor')[];
-  stars: number;
-  install_mode: 'sparse' | 'full';
-  author: string;
-}
-
-interface InstalledSkill extends Skill {
   install_path: string;
-  version?: string;
-  installed_at: string;
-  is_active: boolean;
-  use_count: number;
-}
-
-interface Conflict {
-  trigger: string;
-  skills: string[];
-}
-```
-
-### registry.json (`src-tauri/assets/registry.json`)
-
-```json
-{
-  "version": "2.0",
-  "skills": [
-    {
-      "id": "react-performance-expert",
-      "name": "React Performance Expert",
-      "repo": "vercel-labs/agent-skills",
-      "subPath": "react-best-practices",
-      "description": "React性能优化专家",
-      "category": "前端开发",
-      "tags": ["react", "nextjs"],
-      "platforms": ["claude", "cursor"],
-      "stars": 2100,
-      "install_mode": "sparse",
-      "author": "vercel-labs"
-    }
-  ]
+  skill_md_path?: string | null;
 }
 ```
 
@@ -162,24 +133,19 @@ CREATE TABLE skill_relations (
 );
 ```
 
-## Implementation Status
+## Platform Paths
 
-| Component | Status |
-|-----------|--------|
-| Project scaffolding | Done |
-| Tailwind CSS v4 + shadcn/ui | Done |
-| Zustand store | Done |
-| SQLite schema | Done |
-| Tauri backend skeleton | Done |
-| Page components | Stubs |
-| Hook implementations | Not started |
-| Tauri commands | Stubs |
-| Discover page | Not started |
-| My Skills page | Not started |
+| Platform | Global Path |
+|----------|-------------|
+| Claude Code | `~/.claude/skills/` |
+| Cursor | `~/.cursor/skills/` |
+| Antigravity | `~/.gemini/antigravity/skills/` |
+| Gemini CLI | `~/.gemini/skills/` |
 
 ## Important Notes
 
-- **Platform paths**: Claude Code (`~/.claude/skills/`), Cursor (`~/.cursor/skills/` or `./.cursor/skills/`)
-- **Sparse checkout**: Use `--filter=blob:none --no-checkout` for efficient partial clones
+- **Installation strategy**: Prefer `npx skills add` (skills.sh CLI) with git sparse checkout fallback
+- **SKILL.md parsing**: Backend parses YAML frontmatter with fallback to markdown heading/line extraction
+- **Security**: Validate repo URLs and skill IDs to prevent command injection
 - **Path handling**: Use `PathBuf` for cross-platform paths (Windows backslash vs POSIX forward slash)
-- **Security**: Validate all repo URLs before executing git commands to prevent injection
+- **Browser fallback**: Frontend checks `__TAURI__` in window to detect Tauri vs browser mode
