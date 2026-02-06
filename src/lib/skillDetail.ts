@@ -3,6 +3,11 @@
  * 从 skills.sh 详情页获取 SKILL.md 描述并缓存
  */
 
+import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
+
+/** Tauri 环境用插件 fetch 绕过 CORS，浏览器用原生 fetch */
+const getFetch = () => ('__TAURI__' in window ? tauriFetch : fetch);
+
 /** 描述缓存：key 为 `${source}/${skillId}` */
 const descriptionCache = new Map<string, string>();
 
@@ -112,9 +117,9 @@ export async function fetchSkillDescription(
   }
 
   try {
-    // 构建详情页 URL（通过 Vite 代理解决 CORS）
-    const url = `/api/skills-sh/${source}/${skillId}`;
-    const response = await fetch(url);
+    const baseUrl = import.meta.env.DEV ? '/api/skills-sh' : 'https://skills.sh';
+    const url = `${baseUrl}/${source}/${skillId}`;
+    const response = await getFetch()(url);
 
     if (!response.ok) {
       throw new Error(`请求失败: ${response.status}`);

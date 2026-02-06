@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
+import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import type { RegistrySkill } from '@/data/registry';
 import { getSnapshot, setSnapshot } from '@/lib/skillsCache';
+
+/** Tauri 环境用插件 fetch 绕过 CORS，浏览器用原生 fetch */
+const getFetch = () => ('__TAURI__' in window ? tauriFetch : fetch);
 
 /**
  * 排序类型
@@ -187,8 +191,9 @@ export function useSkillsFromAPI(
 
       try {
         const path = sort ? `/${sort}` : '/';
-        const url = `/api/skills-sh${path}`;
-        const response = await fetch(url);
+        const baseUrl = import.meta.env.DEV ? '/api/skills-sh' : 'https://skills.sh';
+        const url = `${baseUrl}${path}`;
+        const response = await getFetch()(url);
 
         if (!response.ok) {
           throw new Error(`请求失败: ${response.status}`);
