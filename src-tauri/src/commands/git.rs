@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::commands::InstallSkillPayload;
+use crate::commands::fs::{get_detected_platforms, skills_dir_for, skills_dir_for_project};
 
 /// 将 repo 标识转换为可用的 git URL。
 ///
@@ -32,26 +33,6 @@ fn normalize_repo_url(repo: &str) -> Result<String, String> {
     }
 
     Ok(format!("https://github.com/{}.git", repo))
-}
-
-fn home_dir() -> Result<PathBuf, String> {
-    if let Ok(p) = std::env::var("USERPROFILE") {
-        if !p.trim().is_empty() {
-            return Ok(PathBuf::from(p));
-        }
-    }
-    if let Ok(p) = std::env::var("HOME") {
-        if !p.trim().is_empty() {
-            return Ok(PathBuf::from(p));
-        }
-    }
-    Err("无法定位用户目录（USERPROFILE/HOME）".into())
-}
-
-fn default_skills_dir() -> Result<PathBuf, String> {
-    // 默认安装到 Claude Code 的 skills 目录（与用户当前使用场景一致）
-    // 后续可通过 payload 扩展支持平台选择（claude/cursor/项目目录）
-    Ok(home_dir()?.join(".claude").join("skills"))
 }
 
 fn unique_temp_dir(prefix: &str) -> PathBuf {
@@ -105,28 +86,65 @@ fn validate_skill_id(id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// 将 SkillHub 平台映射为 skills CLI 的 --agent 参数
+fn platform_to_agent(platform: &str) -> &'static str {
+    match platform.trim().to_lowercase().as_str() {
+        "claude" => "claude-code",
+        "antigravity" => "antigravity",
+        "gemini" => "gemini-cli",
+        _ => "claude-code",
+    }
+}
+
 /// 通过 npx skills add 安装（优先方案，适配 skills.sh 官方 CLI）
-fn run_npx_skills_add(repo: &str, skill_id: &str) -> Result<(), String> {
+/// - agent: skills CLI 的 --agent（如 claude-code, cursor, antigravity, gemini-cli）
+/// - is_global: true 用 -g 安装到用户目录，false 安装到项目
+/// - cwd: 项目安装时的当前工作目录
+fn run_npx_skills_add(
+    repo: &str,
+    skill_id: &str,
+    agent: &str,
+    is_global: bool,
+    cwd: Option<&Path>,
+) -> Result<(), String> {
     let repo_url = if repo.starts_with("http://") || repo.starts_with("https://") {
         repo.to_string()
     } else {
         format!("https://github.com/{}", repo.trim().trim_end_matches(".git"))
     };
 
-    let out = Command::new("npx")
-        .args([
-            "--yes",
-            "skills",
-            "add",
-            &repo_url,
-            "--skill",
-            skill_id,
-            "-g",
-            "-y",
-        ])
-        .env("DISABLE_TELEMETRY", "1")
-        .output()
-        .map_err(|e| format!("执行 npx 失败（请确保已安装 Node.js）: {e}"))?;
+    let mut npx_args = vec![
+        "--yes",
+        "skills",
+        "add",
+        &repo_url,
+        "--skill",
+        skill_id,
+        "-a",
+        agent,
+        "-y",
+    ];
+    if is_global {
+        npx_args.push("-g");
+    }
+
+    // Windows 下 npx 是 npx.cmd 批处理，Rust Command 无法直接执行，需通过 cmd /c 调用
+    let mut cmd = if cfg!(target_os = "windows") {
+        let mut c = Command::new("cmd");
+        c.args(["/c", "npx"]);
+        c.args(&npx_args);
+        c
+    } else {
+        let mut c = Command::new("npx");
+        c.args(&npx_args);
+        c
+    };
+    cmd.env("DISABLE_TELEMETRY", "1");
+    if let Some(dir) = cwd {
+        cmd.current_dir(dir);
+    }
+
+    let out = cmd.output().map_err(|e| format!("执行 npx 失败（请确保已安装 Node.js）: {e}"))?;
 
     if out.status.success() {
         return Ok(());
@@ -148,23 +166,36 @@ fn run_npx_skills_add(repo: &str, skill_id: &str) -> Result<(), String> {
     ))
 }
 
-/// 检查 npx 是否可用
+/// 检查 npx 是否可用（Windows 下通过 cmd /c 调用）
 fn npx_available() -> bool {
-    Command::new("npx")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    let result = if cfg!(target_os = "windows") {
+        Command::new("cmd")
+            .args(["/c", "npx", "--version"])
+            .output()
+    } else {
+        Command::new("npx")
+            .arg("--version")
+            .output()
+    };
+    result.map(|o| o.status.success()).unwrap_or(false)
 }
 
 /// 实际安装逻辑（供 commands/mod.rs 的 tauri::command 包装调用）
 pub async fn install_skill_impl(payload: InstallSkillPayload) -> Result<String, String> {
     validate_skill_id(&payload.id)?;
     let url = normalize_repo_url(&payload.repo)?;
-    let base_dir = default_skills_dir()?;
-    ensure_dir(&base_dir)?;
 
-    let target_dir = base_dir.join(&payload.id);
+    // 确定目标目录
+    let target_dir: PathBuf = if let Some(project_root) = payload.project_root.as_ref().filter(|p| !p.trim().is_empty()) {
+        let platform = payload.target_platform.as_deref().unwrap_or("claude");
+        skills_dir_for_project(platform, Path::new(project_root))?.join(&payload.id)
+    } else {
+        let platform = payload.target_platform.as_deref().unwrap_or("claude");
+        skills_dir_for(platform)?.join(&payload.id)
+    };
+
+    ensure_dir(&target_dir.parent().unwrap_or(&PathBuf::new()))?;
+
     if target_dir.exists() {
         return Err(format!("已存在同名目录，疑似已安装: {}", target_dir.display()));
     }
@@ -175,21 +206,29 @@ pub async fn install_skill_impl(payload: InstallSkillPayload) -> Result<String, 
     }
     validate_skill_id(skill_id)?;
 
-    // 优先使用 npx skills add（适配 skills.sh 官方 CLI，路径映射更准确）
+    let is_global = payload.project_root.is_none();
+    let platform = payload.target_platform.as_deref().unwrap_or("claude");
+    let agent = platform_to_agent(platform);
+    let cwd = payload
+        .project_root
+        .as_ref()
+        .filter(|p| !p.trim().is_empty())
+        .map(|p| Path::new(p));
+
+    // 优先使用 npx skills add；成功后校验 target_dir 是否存在，不存在则 git 回退
     if npx_available() {
-        match run_npx_skills_add(&payload.repo, skill_id) {
+        match run_npx_skills_add(&payload.repo, skill_id, agent, is_global, cwd.as_deref()) {
             Ok(()) => {
-                return Ok(format!("安装完成: {}", target_dir.display()));
+                if target_dir.exists() {
+                    return Ok(format!("安装完成: {}", target_dir.display()));
+                }
+                // npx 返回成功但目标路径不存在（如 gemini-cli 装到 .agent/skills），回退 git
             }
-            Err(e) => {
-                // 静默回退到 git 方案，不把 npx 错误抛给用户（除非用户更希望看到）
-                // 这里我们回退，让 git 再试一次
-                let _ = e;
-            }
+            Err(e) => return Err(e),
         }
     }
 
-    // 回退：采用临时目录 clone，然后把 sub_path（或整个 repo）移动到目标目录
+    // npx 不可用或 npx 成功但未安装到预期路径时，回退到 git sparse checkout
     let tmp = unique_temp_dir("skillhub_clone");
     remove_dir_if_exists(&tmp);
     let tmp_path = tmp.to_string_lossy().to_string();
@@ -266,4 +305,42 @@ pub async fn install_skill_impl(payload: InstallSkillPayload) -> Result<String, 
     result?;
 
     Ok(format!("安装完成: {}", target_dir.display()))
+}
+
+/// 一键安装到所有已检测到的平台（仅全局，跳过已安装）
+pub async fn install_skill_to_all_platforms_impl(
+    payload: InstallSkillPayload,
+) -> Result<crate::commands::InstallAllResult, String> {
+    validate_skill_id(&payload.id)?;
+
+    let platforms = get_detected_platforms()?;
+    if platforms.is_empty() {
+        return Err("未检测到任何 agent 平台（请确保已安装 Claude Code、Antigravity 或 Gemini CLI）".into());
+    }
+
+    let mut installed = Vec::new();
+    let mut skipped = Vec::new();
+
+    for platform in &platforms {
+        let skills_dir = skills_dir_for(platform)?;
+        let skill_path = skills_dir.join(&payload.id);
+        if skill_path.exists() {
+            skipped.push(platform.clone());
+            continue;
+        }
+
+        let p = InstallSkillPayload {
+            id: payload.id.clone(),
+            repo: payload.repo.clone(),
+            sub_path: payload.sub_path.clone(),
+            target_platform: Some(platform.clone()),
+            project_root: None,
+        };
+        match install_skill_impl(p).await {
+            Ok(_) => installed.push(platform.clone()),
+            Err(e) => return Err(e),
+        }
+    }
+
+    Ok(crate::commands::InstallAllResult { installed, skipped })
 }
