@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -17,15 +18,115 @@ fn home_dir() -> Result<PathBuf, String> {
     Err("无法定位用户目录（USERPROFILE/HOME）".into())
 }
 
-fn skills_dir_for(platform: &str) -> Result<PathBuf, String> {
+/// 各平台用于「检测 agent 是否存在」的父目录路径
+fn platform_detection_path(platform: &str) -> Result<PathBuf, String> {
     match platform {
-        "claude" => Ok(home_dir()?.join(".claude").join("skills")),
-        "cursor" => Ok(home_dir()?.join(".cursor").join("skills")),
-        _ => Err("platform 仅支持 claude/cursor".into()),
+        "claude" => Ok(home_dir()?.join(".claude")),
+        "antigravity" => Ok(home_dir()?.join(".gemini").join("antigravity")),
+        "gemini" => Ok(home_dir()?.join(".gemini")),
+        _ => Err("platform 仅支持 claude/antigravity/gemini".into()),
     }
 }
 
-/// 获取本地已安装 skill 目录名列表（扫描 ~/.claude/skills 或 ~/.cursor/skills）
+/// 检测本机存在的 agent 平台（以目录存在为准）
+#[tauri::command]
+pub fn get_detected_platforms() -> Result<Vec<String>, String> {
+    let platforms = PLATFORMS;
+    let detected: Vec<String> = platforms
+        .iter()
+        .filter(|p| {
+            platform_detection_path(*p)
+                .map(|path| path.exists())
+                .unwrap_or(false)
+        })
+        .map(|p| (*p).to_string())
+        .collect();
+    Ok(detected)
+}
+
+/// 获取全局 skills 目录
+pub(crate) fn skills_dir_for(platform: &str) -> Result<PathBuf, String> {
+    match platform {
+        "claude" => Ok(home_dir()?.join(".claude").join("skills")),
+        "antigravity" => Ok(home_dir()?.join(".gemini").join("antigravity").join("skills")),
+        "gemini" => Ok(home_dir()?.join(".gemini").join("skills")),
+        _ => Err("platform 仅支持 claude/antigravity/gemini".into()),
+    }
+}
+
+/// 获取项目级 skills 目录
+pub(crate) fn skills_dir_for_project(platform: &str, project_root: &Path) -> Result<PathBuf, String> {
+    let sub_dir = match platform {
+        "claude" => ".claude/skills",
+        "antigravity" => ".agent/skills",
+        "gemini" => ".gemini/skills",
+        _ => return Err("platform 仅支持 claude/antigravity/gemini".into()),
+    };
+    Ok(project_root.join(sub_dir))
+}
+
+/// 校验路径是否在合法的 skills 目录下
+fn is_valid_skills_path(path: &Path) -> bool {
+    let home = home_dir().ok();
+    if let Some(home_path) = &home {
+        if path.starts_with(home_path) {
+            return true;
+        }
+    }
+    PLATFORMS.iter().any(|p| {
+        if let Ok(global_dir) = skills_dir_for(p) {
+            if let Ok(global_canonical) = global_dir.canonicalize() {
+                if let Ok(path_canonical) = path.canonicalize() {
+                    return path_canonical.starts_with(&global_canonical) ||
+                           path_canonical.starts_with(&global_canonical.join(".."));
+                }
+            }
+        }
+        false
+    })
+}
+
+const PLATFORMS: &[&str] = &["claude", "antigravity", "gemini"];
+
+/// 批量获取各 skill 在哪些平台已安装（skill_id -> [platform, ...]）
+#[tauri::command]
+pub fn get_installed_platforms_for_skills(ids: Vec<String>) -> Result<HashMap<String, Vec<String>>, String> {
+    let mut result = HashMap::new();
+    for id in ids {
+        if id.trim().is_empty() {
+            continue;
+        }
+        let mut platforms = Vec::new();
+        for platform in PLATFORMS {
+            if let Ok(dir) = skills_dir_for(platform) {
+                if dir.join(&id).exists() {
+                    platforms.push((*platform).to_string());
+                }
+            }
+        }
+        if !platforms.is_empty() {
+            result.insert(id, platforms);
+        }
+    }
+    Ok(result)
+}
+
+/// 获取在任意已检测平台中已安装的 skill ID 列表（用于发现页「已安装」展示）
+#[tauri::command]
+pub fn get_installed_skill_ids_anywhere() -> Result<Vec<String>, String> {
+    let platforms = get_detected_platforms()?;
+    let mut all_ids = std::collections::HashSet::new();
+    for platform in &platforms {
+        if let Ok(ids) = get_installed_skill_ids(platform.clone()) {
+            all_ids.extend(ids);
+        }
+    }
+    let mut ids: Vec<String> = all_ids.into_iter().collect();
+    ids.sort();
+    Ok(ids)
+}
+
+/// 获取本地已安装 skill 目录名列表（扫描各平台 skills 目录）
 #[tauri::command]
 pub fn get_installed_skill_ids(platform: String) -> Result<Vec<String>, String> {
     let dir = skills_dir_for(platform.trim())?;
@@ -210,4 +311,35 @@ pub fn get_installed_skills(platform: String) -> Result<Vec<InstalledSkillMeta>,
 
     out.sort_by(|a, b| a.id.cmp(&b.id));
     Ok(out)
+}
+
+/// 卸载 skill：删除指定路径的 skill 目录
+#[tauri::command]
+pub fn uninstall_skill(skill_id: String, install_path: String) -> Result<(), String> {
+    if skill_id.trim().is_empty() {
+        return Err("skill_id 不能为空".into());
+    }
+    if install_path.trim().is_empty() {
+        return Err("install_path 不能为空".into());
+    }
+
+    let path = PathBuf::from(&install_path);
+    if !path.exists() {
+        return Err("安装路径不存在，可能已被删除".into());
+    }
+
+    // 校验路径安全
+    if !is_valid_skills_path(&path) {
+        return Err("路径不在合法的 skills 目录下".into());
+    }
+
+    // 防止误删：路径必须以 skill_id 结尾
+    if path.file_name().map(|n| n.to_string_lossy() != skill_id).unwrap_or(true) {
+        return Err("路径与 skill_id 不匹配".into());
+    }
+
+    fs::remove_dir_all(&path)
+        .map_err(|e| format!("删除目录失败: {}", e))?;
+
+    Ok(())
 }

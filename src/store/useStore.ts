@@ -1,7 +1,13 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 
-export type Platform = 'claude' | 'cursor';
+export type Platform = 'claude' | 'antigravity' | 'gemini';
+
+export const PLATFORMS: { value: Platform; label: string; globalPath: string }[] = [
+  { value: 'claude', label: 'Claude Code', globalPath: '~/.claude/skills/' },
+  { value: 'antigravity', label: 'Antigravity', globalPath: '~/.gemini/antigravity/skills/' },
+  { value: 'gemini', label: 'Gemini CLI', globalPath: '~/.gemini/skills/' },
+];
 
 export interface InstalledSkillMeta {
   id: string;
@@ -19,8 +25,10 @@ interface AppStore {
 
   /** 本地已安装 skills（目录 + 解析后的元数据） */
   installedSkills: InstalledSkillMeta[];
-  /** 便捷：已安装 id 集合 */
+  /** 便捷：在任意平台已安装的 skill id 集合（用于发现页「已安装」展示） */
   installedSkillIds: string[];
+  /** skill_id -> 已安装的平台列表（用于 Tooltip 展示） */
+  installedPlatformsBySkillId: Record<string, string[]>;
   refreshInstalledSkills: () => Promise<void>;
 }
 
@@ -33,14 +41,31 @@ export const useStore = create<AppStore>((set, get) => ({
 
   installedSkills: [],
   installedSkillIds: [],
+  installedPlatformsBySkillId: {},
   refreshInstalledSkills: async () => {
     if (!('__TAURI__' in window)) {
-      // 浏览器模式无法调用后端，返回空
-      set({ installedSkills: [], installedSkillIds: [] });
+      set({ installedSkills: [], installedSkillIds: [], installedPlatformsBySkillId: {} });
       return;
     }
     const platform = get().platform;
-    const skills = await invoke<InstalledSkillMeta[]>('get_installed_skills', { platform });
-    set({ installedSkills: skills, installedSkillIds: skills.map((s) => s.id) });
+    const [skills, idsAnywhere] = await Promise.all([
+      invoke<InstalledSkillMeta[]>('get_installed_skills', { platform }),
+      invoke<string[]>('get_installed_skill_ids_anywhere'),
+    ]);
+    let platformsBySkillId: Record<string, string[]> = {};
+    if (idsAnywhere.length > 0) {
+      try {
+        platformsBySkillId = await invoke<Record<string, string[]>>('get_installed_platforms_for_skills', {
+          ids: idsAnywhere,
+        });
+      } catch {
+        // 忽略批量接口失败
+      }
+    }
+    set({
+      installedSkills: skills,
+      installedSkillIds: idsAnywhere,
+      installedPlatformsBySkillId: platformsBySkillId,
+    });
   },
 }));

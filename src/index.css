@@ -16,6 +16,8 @@
   --color-muted-foreground: hsl(var(--muted-foreground));
   --color-accent: hsl(var(--accent));
   --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
   --color-glow: hsl(var(--glow));
   --radius: 0.375rem;
   --radius-lg: 0.5rem;

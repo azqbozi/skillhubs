@@ -20,6 +20,8 @@ Thumbs.db
 *.swo
 .vscode/
 .idea/
+.agents/
+.claude/
 
 # Env / secrets
 .env

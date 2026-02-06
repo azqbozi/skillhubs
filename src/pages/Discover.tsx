@@ -22,6 +22,7 @@ const sortOptions: { value: SortType; label: string }[] = [
 export function Discover() {
   const [search, setSearch] = useState('');
   const installedSkillIds = useStore((s) => s.installedSkillIds);
+  const installedPlatformsBySkillId = useStore((s) => s.installedPlatformsBySkillId);
   const refreshInstalledSkills = useStore((s) => s.refreshInstalledSkills);
 
   // 从 API 获取技能列表
@@ -131,6 +132,7 @@ export function Discover() {
                 key={skill.id}
                 skill={skill}
                 isInstalled={installedSkillIds.includes(skill.id)}
+                installedPlatforms={installedPlatformsBySkillId[skill.id] ?? []}
                 index={index}
               />
             ))}

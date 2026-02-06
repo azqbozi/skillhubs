@@ -18,6 +18,8 @@ interface SkillDetailModalProps {
   skill: RegistrySkill;
   /** 是否已安装 */
   isInstalled?: boolean;
+  /** 已安装的平台列表（用于 Tooltip） */
+  installedPlatforms?: string[];
   /** 是否打开 */
   open: boolean;
   /** 打开状态变化回调 */
@@ -31,6 +33,7 @@ interface SkillDetailModalProps {
 export function SkillDetailModal({
   skill,
   isInstalled = false,
+  installedPlatforms = [],
   open,
   onOpenChange,
 }: SkillDetailModalProps) {
@@ -149,7 +152,7 @@ export function SkillDetailModal({
           </Button>
 
           {/* 安装按钮 */}
-          <InstallButton skill={skill} isInstalled={isInstalled} />
+          <InstallButton skill={skill} isInstalled={isInstalled} installedPlatforms={installedPlatforms} />
         </DialogFooter>
       </DialogContent>
     </Dialog>

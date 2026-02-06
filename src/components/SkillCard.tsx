@@ -15,6 +15,8 @@ import { Download, ExternalLink } from 'lucide-react';
 interface SkillCardProps {
   skill: RegistrySkill;
   isInstalled?: boolean;
+  /** 已安装的平台列表（用于 Tooltip） */
+  installedPlatforms?: string[];
   /** 用于入场动画错峰延迟 */
   index?: number;
 }
@@ -23,7 +25,7 @@ interface SkillCardProps {
  * Skill 展示卡片组件
  * 点击卡片打开详情弹窗
  */
-export function SkillCard({ skill, isInstalled = false, index = 0 }: SkillCardProps) {
+export function SkillCard({ skill, isInstalled = false, installedPlatforms = [], index = 0 }: SkillCardProps) {
   const [detailOpen, setDetailOpen] = useState(false);
 
   return (
@@ -52,7 +54,7 @@ export function SkillCard({ skill, isInstalled = false, index = 0 }: SkillCardPr
         <CardFooter className="flex items-center justify-between gap-2">
           {/* 安装按钮（阻止冒泡，避免触发卡片点击） */}
           <div onClick={(e) => e.stopPropagation()} className="flex-1">
-            <InstallButton skill={skill} isInstalled={isInstalled} />
+            <InstallButton skill={skill} isInstalled={isInstalled} installedPlatforms={installedPlatforms} />
           </div>
           
           {/* 详情提示 */}
@@ -67,6 +69,7 @@ export function SkillCard({ skill, isInstalled = false, index = 0 }: SkillCardPr
       <SkillDetailModal
         skill={skill}
         isInstalled={isInstalled}
+        installedPlatforms={installedPlatforms}
         open={detailOpen}
         onOpenChange={setDetailOpen}
       />

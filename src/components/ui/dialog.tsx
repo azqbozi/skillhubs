@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -70,13 +71,15 @@ export function DialogTrigger({ children, asChild }: DialogTriggerProps) {
 
 /**
  * Dialog 内容（遮罩 + 弹窗）
+ * @param priority - 设为 true 时使用更高 z-index，用于嵌套弹窗（如安装目标选择）
  */
 interface DialogContentProps {
   children: React.ReactNode;
   className?: string;
+  priority?: boolean;
 }
 
-export function DialogContent({ children, className }: DialogContentProps) {
+export function DialogContent({ children, className, priority }: DialogContentProps) {
   const { open, onOpenChange } = useDialogContext();
 
   // ESC 关闭
@@ -98,17 +101,22 @@ export function DialogContent({ children, className }: DialogContentProps) {
 
   if (!open) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+  const content = (
+    <div
+      className={cn(
+        'fixed inset-0 flex items-center justify-center p-4',
+        priority ? 'z-[60]' : 'z-50'
+      )}
+    >
       {/* 遮罩 */}
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-md"
         onClick={() => onOpenChange(false)}
       />
-      {/* 弹窗内容 - 科技感面板 */}
+      {/* 弹窗内容 - 使用 Portal 渲染到 body，避免被父级 overflow 裁切 */}
       <div
         className={cn(
-          'relative z-50 w-full max-w-lg max-h-[85vh] overflow-auto rounded-lg border border-border/60 bg-card/95 p-6 shadow-xl backdrop-blur-xl',
+          'relative z-50 max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-lg border border-border/60 bg-card/95 p-6 shadow-xl backdrop-blur-xl',
           'shadow-[0_0_0_1px_hsl(var(--border)/0.5),0_25px_50px_-12px_rgba(0,0,0,0.5)]',
           'animate-in fade-in-0 zoom-in-95 duration-200',
           className
@@ -127,6 +135,8 @@ export function DialogContent({ children, className }: DialogContentProps) {
       </div>
     </div>
   );
+
+  return createPortal(content, document.body);
 }
 
 /**

@@ -13,6 +13,7 @@ pub fn run() {
     }];
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations("sqlite:skills.db", migrations)
@@ -21,6 +22,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::greet,
             commands::install_skill,
+            commands::install_skill_to_all_platforms,
+            commands::fs::get_detected_platforms,
+            commands::fs::get_installed_skill_ids_anywhere,
+            commands::fs::get_installed_platforms_for_skills,
+            commands::fs::uninstall_skill,
             commands::fs::get_installed_skill_ids,
             commands::fs::get_installed_skills
         ])
